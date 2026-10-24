@@ -1,0 +1,19 @@
+import SvgIcon, { type SvgIconProps } from '@mui/material/SvgIcon';
+
+export const SpaceDashboardRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="M3 3h8v8H3zm10 0h8v5h-8zm0 7h8v11h-8zM3 13h8v8H3z" /></SvgIcon>;
+export const ShowChartRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="m3.5 18.5 6-6 4 4L21 7l-1.4-1.4-6.1 7.2-4-4L2 16.5z" /><path d="M3 20h18v1H3z" /></SvgIcon>;
+export const QueryStatsRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="M3 3h2v16h16v2H3zm5 10h2v4H8zm4-5h2v9h-2zm4-4h2v13h-2zm4-2h2v15h-2z" /></SvgIcon>;
+export const TrackChangesRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-8-8zm0 4a6 6 0 1 0 6 6h-2a4 4 0 1 1-4-4zm0 4a2 2 0 1 0 2 2h-2zm7-8v3h3v2h-3v3h-2V7h-3V5h3V2z" /></SvgIcon>;
+export const MonitorHeartRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="M20 3H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h6v2H7v2h10v-2h-3v-2h6a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2m0 13H4V5h16zm-8.2-1-1.7-2.2H7v-2h4l.7.9 1.5-3.7 1.8 4.8.7-1H18v2h-3.4l-.5-.7z" /></SvgIcon>;
+export const HistoryRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="M13 3a9 9 0 0 0-9 9H1l4 4 4-4H6a7 7 0 1 1 2.05 4.95l-1.42 1.42A9 9 0 1 0 13 3m-1 5v5l4.25 2.52 1.03-1.7L14 12V8z" /></SvgIcon>;
+export const EventNoteRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2m0 16H5V9h14zm-12-9h4v2H7zm0 4h10v2H7z" /></SvgIcon>;
+export const ScienceRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="M9 3v2h1v5.59L4.29 17.3A3 3 0 0 0 6.7 22h10.6a3 3 0 0 0 2.41-4.7L14 10.59V5h1V3zm3 8.25L18.1 18H5.9l6.1-6.75zM8 15h2v2H8zm5-1h2v2h-2z" /></SvgIcon>;
+export const MenuBookRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="M21 4H14a4 4 0 0 0-2 0 4 4 0 0 0-2 0H3v16h7a4 4 0 0 1 2 1 4 4 0 0 1 2-1h7zm-2 14h-5a5.5 5.5 0 0 0-2 .4 5.5 5.5 0 0 0-2-.4H5V6h5a2 2 0 0 1 2 2v8a4 4 0 0 1 2-1h5z" /></SvgIcon>;
+export const ShieldRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="m12 2 9 4v6c0 5.25-3.84 10.16-9 11-5.16-.84-9-5.75-9-11V6zm0 2.18L5 7.29V12c0 4.12 2.91 8.1 7 8.94 4.09-.84 7-4.82 7-8.94V7.29zM10.8 15.7l-3-3 1.4-1.4 1.6 1.6 4-4 1.4 1.4z" /></SvgIcon>;
+export const SettingsRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="m19.4 13a8 8 0 0 0 0-2l2-1.55-2-3.46-2.38.96a7.7 7.7 0 0 0-1.73-1L15 3h-4l-.36 2.95a7.7 7.7 0 0 0-1.73 1l-2.38-.96-2 3.46 2 1.55a8 8 0 0 0 0 2l-2 1.55 2 3.46 2.38-.96a7.7 7.7 0 0 0 1.73 1L11 21h4l.36-2.95a7.7 7.7 0 0 0 1.73-1l2.38.96 2-3.46zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7" /></SvgIcon>;
+export const NotificationsActiveRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2m6-6V11a6 6 0 0 0-5-5.91V4a1 1 0 0 0-2 0v1.09A6 6 0 0 0 6 11v5l-2 2v1h16v-1zm-8-9.82V5h4v1.18A6 6 0 0 1 18 12v4H6v-4a6 6 0 0 1 4-5.82" /></SvgIcon>;
+export const LogoutRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="M10 17v-3H3v-4h7V7l5 5zm-1-14h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H9v-2h11V5H9z" /></SvgIcon>;
+export const RefreshRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.93 9h-2.02A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4z" /></SvgIcon>;
+export const WarningAmberRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="M1 21h22L12 2zm12-3h-2v-2h2zm0-4h-2v-4h2z" /></SvgIcon>;
+export const ArrowUpwardRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="m4 12 1.41 1.41L11 7.83V20h2V7.83l5.59 5.58L20 12l-8-8z" /></SvgIcon>;
+export const ArrowDownwardRounded = (props: SvgIconProps) => <SvgIcon {...props}><path d="m20 12-1.41-1.41L13 16.17V4h-2v12.17l-5.59-5.58L4 12l8 8z" /></SvgIcon>;

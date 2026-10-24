@@ -1,0 +1,8 @@
+:root { font-synthesis: none; text-rendering: optimizeLegibility; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: #0b1015; }
+.mono { font-family: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, monospace !important; font-variant-numeric: tabular-nums; }
+.panel-kicker { color: #8797a5; text-transform: uppercase; letter-spacing: .11em; font-size: 10px; font-weight: 700; }
+.grid-glow { background-image: radial-gradient(circle at 85% 0%, rgba(73, 212, 179, .09), transparent 31%); }
+.page-enter { animation: reveal .25s ease-out; }
+@keyframes reveal { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }

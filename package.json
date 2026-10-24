@@ -1,0 +1,19 @@
+{
+  "name": "ai-trading-intelligence-system",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,analysis,web -c blue,magenta,green \"npm:dev --workspace apps/api\" \"npm:dev:analysis --workspace apps/api\" \"npm:dev --workspace apps/web\"",
+    "build": "npm run build --workspace apps/web",
+    "test": "npm run test --workspace apps/api && node scripts/python.js -m unittest discover -s services/analysis/tests -v",
+    "lint": "npm run lint --workspace apps/web"
+  },
+  "devDependencies": {
+    "caniuse-lite": "^1.0.30001819",
+    "concurrently": "^9.2.1",
+    "fdir": "^6.5.0"
+  }
+}
