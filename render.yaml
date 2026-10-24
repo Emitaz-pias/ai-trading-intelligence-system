@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: pias-trading-intelligence-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.render
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: WEB_ORIGIN
+        value: https://piastradinganalysis.netlify.app
+      - key: DATA_MODE
+        value: disabled
+      - key: ALLOW_REGISTRATION
+        value: false
+      - key: ANALYSIS_URL
+        value: http://127.0.0.1:8001
+      - key: JWT_SECRET
+        generateValue: true
+      - key: COLLECTOR_TOKEN
+        generateValue: true
+      - key: MONGO_URI
+        sync: false

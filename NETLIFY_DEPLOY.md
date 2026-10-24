@@ -1,44 +1,27 @@
-# Netlify deployment
+# Hosted deployment
 
-Netlify will host the React/Vite frontend. The repository's Express API, Python analysis service, MongoDB, and WebSocket server need a separate always-on backend host; Netlify publishes the files in the configured publish directory and does not run this app's server or database.
+## Frontend
 
-## Frontend build
+The Netlify project `piastradinganalysis` is connected to this repository's `main` branch. Its public URL is `https://piastradinganalysis.netlify.app`. The repository root `netlify.toml` sets the build command to `npm run build`, publishes `apps/web/dist`, and rewrites client-side routes to `index.html`.
 
-The root `netlify.toml` is already configured for this monorepo:
+The frontend is a static site. Netlify does not run the Express API, the Python analysis service, or MongoDB.
 
-- Build command: `npm run build`
-- Publish directory: `apps/web/dist`
-- SPA routes: rewritten to `index.html`
-- Node.js build version: 22
+## API and analysis service
 
-## Backend and domain
+`render.yaml` and `Dockerfile.render` define one Render Docker web service for the Node API and Python analysis service. It starts in `DATA_MODE=disabled`, so it deliberately shows no market price or trade plan until a verified MT5 collector is connected. Render should receive a MongoDB Atlas connection URI through the `MONGO_URI` secret setting. Never commit that URI or send it in chat.
 
-For the existing production session cookie and WebSocket to work in browsers, use two HTTPS subdomains under the same domain, for example:
+After Render creates the service and assigns its public `onrender.com` hostname, add a Netlify proxy rule for `/api/*` above the SPA fallback in `netlify.toml`. This lets the browser use the Netlify origin for API requests and the HTTP-only session cookie.
 
-- Frontend: `https://app.example.com` on Netlify
-- Backend: `https://api.example.com` on a Docker-capable host with persistent storage
-- WebSocket: `wss://api.example.com/ws`
+Netlify's proxy rewrites are HTTP-only and do not proxy WebSocket connections. With the requested default `netlify.app` domain, the app can use the API's HTTP endpoints and periodic refresh, but cannot receive WebSocket push updates through the Netlify proxy. A custom domain with a shared parent domain is needed for the current WebSocket authentication flow.
 
-The API currently uses a secure, `SameSite=Lax` cookie. A shared parent domain keeps the frontend and API same-site. Configure the API's `WEB_ORIGIN` to the exact frontend origin, such as `https://app.example.com`.
+## Free-tier limits
 
-After the API has a public HTTPS address, set these Netlify build environment variables and redeploy:
+Render Free web services sleep after 15 minutes without inbound requests and take about a minute to wake. Their local files are ephemeral and Free services cannot attach persistent disks. MongoDB Atlas Free clusters provide 0.5 GB storage and can be paused after 30 days without connections. This setup is suitable for a low-traffic preview, not reliable always-on trading monitoring. A paid always-on Render service and persistent database plan would add cost and must be chosen by the owner.
 
-- `VITE_API_BASE_URL=https://api.example.com`
-- `VITE_WS_URL=wss://api.example.com/ws`
+## Owner steps
 
-Those `VITE_` values are public browser configuration. Do not put passwords, JWT secrets, database URIs, provider keys, or collector tokens in Netlify's frontend environment.
+1. Sign in to MongoDB Atlas (or create an Atlas account), create a Free cluster, create a database user, and allow the Render service to connect. Enter the resulting `MONGO_URI` directly into the Render service's Environment settings. Do not share the password or URI in chat.
+2. Once the API health endpoint reports the database and analysis service as healthy, temporarily enable `ALLOW_REGISTRATION` in Render, create your account at the site, then disable registration again.
+3. Keep `DATA_MODE=disabled` until a Windows VPS running MT5 on the assigned FundingPips server passes the collector's read-only `--check` and uploads fresh data. No live XAUUSD data is available without that VPS and verified collector.
 
-The backend needs `JWT_SECRET`, `MONGO_URI` (or the included Compose MongoDB with persistent storage), `WEB_ORIGIN`, and `DATA_MODE=disabled` for the initial deployment. Keep backend secrets in the backend host's secret/environment settings. The project has no Git remote or commits yet, so automatic Netlify deployments also require a private GitHub repository and permission to push this code.
-
-## Access needed from the owner
-
-1. Sign in to Netlify in the browser and authorize its GitHub integration.
-2. Sign in to GitHub and create or select a **private** repository for this project.
-3. Provide access to a backend host account that can run Docker services continuously and keep database storage persistent. If using managed MongoDB instead, provide access to that database account as well.
-4. Provide a domain you own and DNS editing access for the `app` and `api` subdomains, or say if you do not have a domain yet.
-
-Do not send passwords, one-time codes, API keys, or cloud tokens in chat. Sign in yourself and enter any provider secrets directly in that provider's dashboard. No OpenAI, Telegram, or economic-calendar key is required for the initial deployment.
-
-## Live MT5 feed
-
-The initial deployment must remain in `DATA_MODE=disabled`, so it will not show a live XAUUSD price. A live feed needs a Windows VPS with MT5 signed in to the assigned FundingPips server and the project's read-only collector running there. The owner can sign in to MT5 on that VPS; never send MT5 passwords in chat. Enable provider mode only after the collector's local `--check` succeeds and the API confirms ingestion.
+No OpenAI, Telegram, or economic-calendar key is needed for the initial deployment.

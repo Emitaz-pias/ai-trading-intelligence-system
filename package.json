@@ -15,5 +15,8 @@
     "caniuse-lite": "^1.0.30001819",
     "concurrently": "^9.2.1",
     "fdir": "^6.5.0"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "4.65.0"
   }
 }
