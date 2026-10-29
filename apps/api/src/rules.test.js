@@ -35,6 +35,9 @@ test('fresh indicative XAUS candles may show chart analysis but never issue a tr
   const plan = makeConditionalPlan(planFixture([current]), true, 'xaus', { M15: [current] });
   assert.equal(plan.state, 'NO_TRADE');
   assert.match(plan.reasonsToAvoid.join(' '), /broker quote/);
+  const stalePlan = makeConditionalPlan(planFixture([current]), false, 'xaus', { M15: [current] });
+  assert.equal(stalePlan.state, 'NO_TRADE');
+  assert.match(stalePlan.reasonsToAvoid.join(' '), /stale/);
 });
 
 function planFixture(m15Bars, m5Bars = []) {

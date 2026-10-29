@@ -53,14 +53,19 @@ function tradeTriggers(trade, tick, alertDistance) {
 
 function makeConditionalPlan(result, healthy, sourceMode, candles = {}) {
   const m15 = result?.results?.M15;
+  if (sourceMode === 'xaus') return {
+    state: 'NO_TRADE', direction: 'unknown', ruleId: 'indicative-reference-feed-no-entry-v1', conditions: [],
+    reasonsToAvoid: [
+      ...(!healthy ? ['The latest completed M5 reference candle is stale; current trade conditions are withheld.'] : []),
+      ...(!m15 || m15.status !== 'ok' ? ['There are not enough completed M15 candles for confirmed structure.'] : []),
+      'The chart analysis uses an indicative XAU/USD reference feed, not your broker quote.',
+      'Broker spread, execution conditions, upcoming news and account-specific risk are not verified.',
+    ],
+    explanation: 'Structure and zones are displayed for context. No entry conditions are issued from this reference feed.',
+  };
   if (!healthy || !m15 || m15.status !== 'ok') {
     return { state: 'DATA_UNAVAILABLE', direction: 'unknown', ruleId: 'data-freshness-gate-v1', conditions: [], reasonsToAvoid: ['A verified, fresh provider feed and enough closed M15 candles are required before any live plan can be considered.'], explanation: 'No actionable plan is available from illustrative or stale data.' };
   }
-  if (sourceMode === 'xaus') return {
-    state: 'NO_TRADE', direction: 'unknown', ruleId: 'indicative-reference-feed-no-entry-v1', conditions: [],
-    reasonsToAvoid: ['The chart analysis uses an indicative XAU/USD reference feed, not your broker quote.', 'Broker spread, execution conditions, upcoming news and account-specific risk are not verified.'],
-    explanation: 'Structure and zones are displayed for context. No entry conditions are issued from this reference feed.',
-  };
   if (sourceMode !== 'provider') return { state: 'DATA_UNAVAILABLE', direction: 'unknown', ruleId: 'data-freshness-gate-v1', conditions: [], reasonsToAvoid: ['A verified, fresh provider feed is required before any live plan can be considered.'], explanation: 'No actionable plan is available from illustrative or stale data.' };
   const latestBreak = [...(m15.structure || [])].reverse().find((event) => event.confirmed && ['BOS', 'CHOCH'].includes(event.type));
   const current = m15.currentClose;

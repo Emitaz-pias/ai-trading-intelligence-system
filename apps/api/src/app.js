@@ -21,7 +21,7 @@ const ACCESS_COOKIE = 'ati_session';
 const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'local-development-secret-change-before-deploy-00000000');
 const DATA_MODE = ['provider', 'xaus'].includes(process.env.DATA_MODE) ? process.env.DATA_MODE : process.env.NODE_ENV === 'production' ? 'disabled' : 'illustrative';
 const MAX_TICK_AGE_SECONDS = Math.max(5, Number(process.env.MAX_TICK_AGE_SECONDS) || 30);
-const MAX_XAUS_BAR_AGE_SECONDS = Math.max(60, Number(process.env.MAX_XAUS_BAR_AGE_SECONDS) || 300);
+const MAX_XAUS_BAR_AGE_SECONDS = Math.max(60, Number(process.env.MAX_XAUS_BAR_AGE_SECONDS) || 900);
 const TIMEFRAME_SECONDS = { M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400 };
 const openAiSchema = {
   type: 'object',
@@ -97,7 +97,7 @@ async function marketStatus() {
       warnings: [
         'Indicative XAU/USD OHLC from the XAUS public chart API (Yahoo Finance proxy); it may differ from OANDA and FundingPips.',
         'This is not your broker feed, has no verified spread or account-risk context, and cannot issue a trade entry.',
-        ...(isFresh ? [] : [`The most recent completed M5 bar is older than ${MAX_XAUS_BAR_AGE_SECONDS} seconds; live trade analysis is withheld.`]),
+        ...(isFresh ? [] : [`The last completed M5 bar is about ${Math.floor(ageSeconds / 60)} minutes old, beyond the ${Math.floor(MAX_XAUS_BAR_AGE_SECONDS / 60)}-minute display limit; its price is withheld.`]),
       ],
     };
   }
