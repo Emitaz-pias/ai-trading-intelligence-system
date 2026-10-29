@@ -19,12 +19,12 @@ export default function MarketChart({ candles, analysis, trades, timeframe, symb
   const volumeSeries = useRef<ISeriesApi<'Histogram'> | null>(null);
   const markers = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const lines = useRef<ReturnType<ISeriesApi<'Candlestick'>['createPriceLine']>[]>([]);
-  const [showSwings, setShowSwings] = useState(true);
+  const [showSwings, setShowSwings] = useState(false);
   const [showStructure, setShowStructure] = useState(true);
   const [showZones, setShowZones] = useState(true);
-  const [showSupplyDemand, setShowSupplyDemand] = useState(true);
-  const [showLiquidity, setShowLiquidity] = useState(true);
-  const [showTrades, setShowTrades] = useState(true);
+  const [showSupplyDemand, setShowSupplyDemand] = useState(false);
+  const [showLiquidity, setShowLiquidity] = useState(false);
+  const [showTrades, setShowTrades] = useState(false);
   const [overlayRevision, setOverlayRevision] = useState(0);
   const [selectedZone, setSelectedZone] = useState<SupplyDemandZone | null>(null);
   const [crosshair, setCrosshair] = useState<{ time: string; open: number; high: number; low: number; close: number } | null>(null);
@@ -91,14 +91,14 @@ export default function MarketChart({ candles, analysis, trades, timeframe, symb
     lines.current = [];
     const output: { time: UTCTimestamp; position: 'aboveBar' | 'belowBar' | 'inBar'; color: string; shape: 'circle' | 'arrowUp' | 'arrowDown'; text: string; size: number }[] = [];
     if (showSwings) for (const swing of analysis?.swings || []) output.push({ time: chartTime(swing.confirmedAt), position: swing.kind === 'swing_high' ? 'aboveBar' : 'belowBar', color: swing.kind === 'swing_high' ? '#f5bd63' : '#49d4b3', shape: swing.kind === 'swing_high' ? 'arrowDown' : 'arrowUp', text: swing.label, size: 1 });
-    if (showStructure) for (const event of analysis?.structure || []) output.push({ time: chartTime(event.time), position: event.direction === 'up' ? 'belowBar' : 'aboveBar', color: event.direction === 'up' ? '#49d4b3' : '#ff737d', shape: event.direction === 'up' ? 'arrowUp' : 'arrowDown', text: event.type, size: 1 });
+    if (showStructure) for (const event of (analysis?.structure || []).filter((item) => item.confirmed).slice(-6)) output.push({ time: chartTime(event.time), position: event.direction === 'up' ? 'belowBar' : 'aboveBar', color: event.direction === 'up' ? '#49d4b3' : '#ff737d', shape: event.direction === 'up' ? 'arrowUp' : 'arrowDown', text: event.type, size: 1 });
     output.sort((a, b) => a.time - b.time);
     markers.current.setMarkers(output.slice(-80));
     const addLine = (price: number, color: string, title: string, style = LineStyle.Dashed) => lines.current.push(candle.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }));
     if (Number.isFinite(referencePrice) && (referencePrice as number) > 0) addLine(referencePrice as number, 'rgba(105,178,255,.92)', 'Indicative spot · separate source', LineStyle.Solid);
     if (showZones) {
-      if (analysis?.nearestSupport) { addLine(analysis.nearestSupport.low, 'rgba(73,212,179,.60)', 'Support low'); addLine(analysis.nearestSupport.high, 'rgba(73,212,179,.60)', 'Support high'); }
-      if (analysis?.nearestResistance) { addLine(analysis.nearestResistance.low, 'rgba(255,115,125,.60)', 'Resistance low'); addLine(analysis.nearestResistance.high, 'rgba(255,115,125,.60)', 'Resistance high'); }
+      if (analysis?.nearestSupport) addLine(analysis.nearestSupport.mid, 'rgba(73,212,179,.72)', 'Support zone · mid');
+      if (analysis?.nearestResistance) addLine(analysis.nearestResistance.mid, 'rgba(255,115,125,.72)', 'Resistance zone · mid');
     }
     if (showLiquidity) for (const level of (analysis?.liquidity?.levels || []).filter((item) => item.type.startsWith('previous_') || item.type.startsWith('equal_')).slice(-10)) {
       addLine(level.price, level.potentialSweepAt ? 'rgba(245,189,99,.8)' : 'rgba(245,189,99,.42)', `Liquidity · ${level.type.replaceAll('_', ' ')}${level.potentialSweepAt ? ' · swept?' : ''}`);
