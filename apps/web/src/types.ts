@@ -1,6 +1,6 @@
 export type Candle = { time: string; open: number; high: number; low: number; close: number; volume: number; source?: string };
 export type MarketStatus = {
-  mode: 'illustrative' | 'provider' | 'disabled'; connectionStatus: 'connected' | 'delayed' | 'disconnected' | 'illustrative';
+  mode: 'illustrative' | 'provider' | 'xaus' | 'disabled'; connectionStatus: 'connected' | 'delayed' | 'disconnected' | 'illustrative';
   connectionLabel: string; currentPrice: number | null; latestTickAt: string | null; lastSuccessfulUpdateAt: string | null;
   isFresh: boolean; warnings: string[]; provider?: string; symbol?: string; accountServer?: string | null;
 };

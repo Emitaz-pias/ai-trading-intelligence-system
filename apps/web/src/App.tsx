@@ -8,8 +8,8 @@ import {
 import { useTheme } from '@mui/material/styles';
 import { ArrowDownwardRounded, ArrowUpwardRounded, EventNoteRounded, HistoryRounded, LogoutRounded, MenuBookRounded, MonitorHeartRounded, NotificationsActiveRounded, QueryStatsRounded, RefreshRounded, ScienceRounded, SettingsRounded, ShieldRounded, ShowChartRounded, SpaceDashboardRounded, TrackChangesRounded, WarningAmberRounded } from './icons';
 import { api, json, patchJson, webSocketUrl } from './api';
-import TradingViewChart from './components/TradingViewChart';
-import type { Alert as AlertEvent, AnalysisResponse, MarketStatus, NewsEvent, RiskStatus, Settings, Trade } from './types';
+import MarketChart from './components/MarketChart';
+import type { Alert as AlertEvent, AnalysisResponse, Candle, MarketStatus, NewsEvent, RiskStatus, Settings, Trade } from './types';
 
 type User = { id: string; email: string };
 type AuthResponse = { user: User };
@@ -86,19 +86,61 @@ function AppGate() {
   return <Workspace user={user} onLogout={() => setUser(null)} />;
 }
 
-function GuestChartPage({ onSignIn }: { onSignIn: () => void }) {
+function GuestChartPage({ onSignIn }: { onSignIn: () => void }) { return <LiveChartPage onSignIn={onSignIn} />; }
+
+type PublicChartResponse = AnalysisResponse & { symbol: string; timeframe: string; candles: Candle[]; sourceLabel: string };
+
+function LiveChartPage({ onSignIn }: { onSignIn?: () => void }) {
   const [timeframe, setTimeframe] = useState('M15');
-  const intervals: Record<string, string> = { M5: '5', M15: '15', M30: '30', H1: '60', H4: '240', D1: 'D' };
+  const [data, setData] = useState<PublicChartResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const load = useCallback(async () => {
+    setError('');
+    try { setData(await api<PublicChartResponse>(`/public/market/chart?timeframe=${encodeURIComponent(timeframe)}`)); }
+    catch (issue) { setError(issue instanceof Error ? issue.message : 'Market analysis is unavailable'); }
+    finally { setLoading(false); }
+  }, [timeframe]);
+  useEffect(() => { setLoading(true); setData(null); load(); const timer = window.setInterval(load, 60_000); return () => window.clearInterval(timer); }, [load]);
+
+  const result = data?.results?.[timeframe];
+  const context = data?.results?.M15;
+  const plan = data?.tradePlan;
+  const status = data?.marketStatus;
   return <Box minHeight="100vh" className="grid-glow" sx={{ py: { xs: 2, md: 3 } }}>
     <Container maxWidth={false} sx={{ maxWidth: 1600, px: { xs: 2, sm: 2.5, lg: 3.5 } }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
-        <Stack direction="row" alignItems="center" spacing={1.5}><Avatar sx={{ bgcolor: 'primary.main', color: '#071411', width: 40, height: 40 }}>AI</Avatar><Box><Typography fontWeight={700}>Trading Intelligence</Typography><Typography variant="caption" color="text.secondary">XAUUSD · live chart</Typography></Box></Stack>
+      {onSignIn && <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
+        <Stack direction="row" alignItems="center" spacing={1.5}><Avatar sx={{ bgcolor: 'primary.main', color: '#071411', width: 40, height: 40 }}>AI</Avatar><Box><Typography fontWeight={700}>Trading Intelligence</Typography><Typography variant="caption" color="text.secondary">XAUUSD · market analysis</Typography></Box></Stack>
         <Button variant="outlined" onClick={onSignIn}>Sign in</Button>
-      </Stack>
-      <PageTitle title="Live XAUUSD chart" subtitle="Interactive gold chart. Choose a timeframe and view the live market." action={<FormControl size="small" sx={{ minWidth: 112 }}><InputLabel>Timeframe</InputLabel><Select label="Timeframe" value={timeframe} onChange={(event) => setTimeframe(event.target.value)}>{Object.keys(intervals).map((tf) => <MenuItem key={tf} value={tf}>{tf}</MenuItem>)}</Select></FormControl>} />
-      <Alert severity="info" sx={{ mb: 1.5 }}>Chart source: OANDA:XAUUSD on TradingView. Its quote can differ slightly from FundingPips. This chart is for viewing and does not send candles to automatic analysis.</Alert>
-      <Card><CardContent sx={{ p: { xs: 1, md: 1.5 } }}><TradingViewChart interval={intervals[timeframe]} /></CardContent></Card>
-      <Typography color="text.secondary" variant="body2" mt={1.5}>For chart analysis, send a screenshot with the symbol, timeframe and current candles visible. No broker login or account journal is needed.</Typography>
+      </Stack>}
+      <PageTitle title="XAUUSD chart & analysis" subtitle="Recent reference candles with rule-based structure, liquidity and zones drawn on the same chart." action={<Stack direction="row" spacing={1}><FormControl size="small" sx={{ minWidth: 105 }}><InputLabel>Timeframe</InputLabel><Select label="Timeframe" value={timeframe} onChange={(event) => setTimeframe(event.target.value)}>{['M5', 'M15', 'M30', 'H1', 'H4', 'D1'].map((tf) => <MenuItem key={tf} value={tf}>{tf}</MenuItem>)}</Select></FormControl><Button variant="outlined" startIcon={<RefreshRounded />} onClick={load}>Refresh</Button></Stack>} />
+      {status && <Alert severity={status.isFresh ? 'warning' : 'error'} sx={{ mb: 1.5 }}><b>{status.connectionLabel}.</b> {status.warnings.join(' ')}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
+      {loading && !data ? <Stack alignItems="center" py={8}><CircularProgress size={25} /><Typography color="text.secondary" variant="caption" mt={1}>Loading XAU/USD reference candles and analysis…</Typography></Stack> : data && <>
+        <Card><CardContent sx={{ p: { xs: 1, md: 1.5 } }}><MarketChart candles={data.candles} analysis={result} trades={[]} timeframe={timeframe} symbol={data.symbol} sourceMode={data.sourceMode} /><Typography variant="caption" color="text.secondary" display="block" mt={0.5}>Last completed {timeframe} bar: {formatTime(data.candles.at(-1)?.time)} · values and overlays use closed bars.</Typography></CardContent></Card>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 1.4, mt: 1.4 }}>
+          <Card><CardContent>
+            <Typography fontWeight={700}>Current structure · M15</Typography>
+            <Stack direction="row" flexWrap="wrap" useFlexGap gap={0.6} mt={1}>
+              {['D1', 'H4', 'H1', 'M30', 'M15', 'M5'].map((tf) => <Chip key={tf} size="small" variant="outlined" label={`${tf} · ${data.results[tf]?.regime?.replaceAll('_', ' ') || data.results[tf]?.status || 'insufficient'}`} />)}
+            </Stack>
+            <Typography color="text.secondary" variant="body2" mt={0.8}>Regime: <b>{context?.regime?.replaceAll('_', ' ') || context?.status || 'insufficient data'}</b> · {context?.candlesAnalyzed || 0} completed candles</Typography>
+            <Typography color="text.secondary" variant="body2" mt={0.7}>Latest confirmed event: <b>{context?.structure?.filter((event) => event.confirmed).at(-1)?.type || 'none'}</b> {context?.structure?.filter((event) => event.confirmed).at(-1)?.direction || ''}</Typography>
+            <Stack direction="row" spacing={1} mt={1.2}>
+              <Chip size="small" variant="outlined" label={`Support ${context?.nearestSupport ? `${price(context.nearestSupport.low)}–${price(context.nearestSupport.high)}` : '—'}`} />
+              <Chip size="small" variant="outlined" label={`Resistance ${context?.nearestResistance ? `${price(context.nearestResistance.low)}–${price(context.nearestResistance.high)}` : '—'}`} />
+            </Stack>
+            <Typography color="text.secondary" variant="caption" display="block" mt={1}>Swing points, BOS/CHoCH, liquidity references and supply/demand zones are rule-calculated and shown on the selected timeframe chart.</Typography>
+            {data.report.explanations.slice(0, 2).map((item) => <Typography key={item} color="text.secondary" variant="caption" display="block" mt={0.8}>{item}</Typography>)}
+          </CardContent></Card>
+          <Card><CardContent>
+            <Stack direction="row" alignItems="center" spacing={1}><Typography fontWeight={700}>Trade decision</Typography><Chip size="small" color="warning" label={plan?.state?.replaceAll('_', ' ') || 'WAITING'} /></Stack>
+            <Typography color="text.secondary" variant="body2" mt={1}>{plan?.explanation || 'Waiting for enough completed candles.'}</Typography>
+            {plan?.reasonsToAvoid?.map((reason) => <Typography key={reason} color="text.secondary" variant="caption" display="block" mt={0.7}>• {reason}</Typography>)}
+          </CardContent></Card>
+        </Box>
+        <Typography color="text.secondary" variant="caption" display="block" mt={1.2}>Source: {data.sourceLabel}. The reference feed can differ from OANDA/FundingPips; spot gold has no consolidated exchange volume. Updated from the cloud API about once per minute. No orders are placed.</Typography>
+      </>}
     </Container>
   </Box>;
 }
@@ -196,6 +238,7 @@ function PageTitle({ eyebrow = 'XAUUSD · MARKET INTELLIGENCE', title, subtitle,
 function StatusBanner({ status }: { status: MarketStatus | null }) {
   if (!status) return <Alert severity="info" sx={{ mb: 2.5 }}>Checking market-data status…</Alert>;
   if (status.mode === 'illustrative') return <Alert severity="warning" icon={<WarningAmberRounded />} sx={{ mb: 2.5, alignItems: 'center' }}><Typography component="span" fontWeight={700}>Illustrative development mode.</Typography> Synthetic candles are shown for interface and rule-engine checks; they are not market data. Live prices and actionable plans are disabled.</Alert>;
+  if (status.mode === 'xaus') return <Alert severity="warning" icon={<WarningAmberRounded />} sx={{ mb: 2.5, alignItems: 'center' }}><Typography component="span" fontWeight={700}>{status.connectionLabel}.</Typography> {status.warnings.join(' ')}</Alert>;
   if (!status.isFresh) return <Alert severity="error" icon={<WarningAmberRounded />} sx={{ mb: 2.5, alignItems: 'center' }}><Typography component="span" fontWeight={700}>{status.connectionLabel}.</Typography> The current price is withheld until fresh MT5 data returns. {status.warnings?.join(' ')}</Alert>;
   return <Alert severity="success" sx={{ mb: 2.5, alignItems: 'center' }}><Typography component="span" fontWeight={700}>Read-only MT5 feed is fresh.</Typography> {status.symbol} · {status.accountServer || 'server not reported'} · no broker orders can be placed by this app.</Alert>;
 }
@@ -235,7 +278,7 @@ function Dashboard({ status, refreshKey }: { status: MarketStatus | null; refres
     <StatusBanner status={status} />
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', lg: 'repeat(4, 1fr)' }, gap: 1.5, mb: 1.5 }}>
-      <MetricCard label="XAUUSD · current" value={status?.isFresh ? price(status.currentPrice) : '—'} unit={status?.isFresh ? 'Broker quote' : 'Not available'} foot={status?.isFresh ? `Tick ${formatTime(status.latestTickAt)}` : 'No live quote'} accent={status?.isFresh ? 'success.main' : 'text.secondary'} />
+      <MetricCard label="XAUUSD · current" value={status?.isFresh ? price(status.currentPrice) : '—'} unit={status?.isFresh ? status.mode === 'xaus' ? 'Indicative candle close' : 'Broker quote' : 'Not available'} foot={status?.isFresh ? `As of ${formatTime(status.latestTickAt)}` : 'No fresh quote'} accent={status?.isFresh ? 'success.main' : 'text.secondary'} />
       <MetricCard label="Market session" value={marketSessionNow()} unit="IANA timezone based" foot="Asia · London · New York windows" accent="text.primary" />
       <MetricCard label="M15 volatility" value={results.M15?.volatility?.state || '—'} unit="True range · deterministic" foot={`ATR(14) ${results.M15?.atr14 ? price(results.M15.atr14) : '—'}`} accent="info.main" />
       <MetricCard label="Active monitoring" value={String(trades.length)} unit="Manually registered trades" foot={`${alerts.length} recorded alerts`} accent="primary.main" />
@@ -293,13 +336,7 @@ function useAnalysis(refreshKey: number) {
 }
 
 function ChartPage() {
-  const [timeframe, setTimeframe] = useState('M15');
-  const intervals: Record<string, string> = { M5: '5', M15: '15', M30: '30', H1: '60', H4: '240', D1: 'D' };
-  return <Box className="page-enter"><PageTitle title="TradingView XAUUSD chart" subtitle="Interactive gold chart for viewing. Send a screenshot here when you want me to analyze the current setup." action={<FormControl size="small" sx={{ minWidth: 112 }}><InputLabel>Timeframe</InputLabel><Select label="Timeframe" value={timeframe} onChange={(event) => setTimeframe(event.target.value)}>{Object.keys(intervals).map((tf) => <MenuItem key={tf} value={tf}>{tf}</MenuItem>)}</Select></FormControl>} />
-    <Alert severity="info" sx={{ mb: 1.5 }}>Chart source: OANDA:XAUUSD on TradingView. Its quote can differ slightly from FundingPips. The chart is displayed here; it does not send candles to the app's automatic analysis.</Alert>
-    <Card><CardContent sx={{ p: { xs: 1, md: 1.5 } }}><TradingViewChart interval={intervals[timeframe]} /></CardContent></Card>
-    <Card sx={{ mt: 1.5 }}><CardContent><Typography fontWeight={700} fontSize={13}>Ask for a chart analysis</Typography><Typography color="text.secondary" variant="body2" mt={0.6}>Send a screenshot with the symbol, timeframe and current candles visible. I can analyze it when you send it; I do not watch the chart continuously in the background. No broker login or account journal is needed for chart analysis.</Typography></CardContent></Card>
-  </Box>;
+  return <LiveChartPage />;
 }
 
 function AnalysisPage({ refreshKey }: { refreshKey: number }) {

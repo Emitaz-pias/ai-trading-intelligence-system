@@ -1,10 +1,11 @@
 # AI Trading Intelligence System
 
-A private, alert-only XAUUSD analysis dashboard. It does not execute trades or modify broker-side orders. Market data is separated from the deterministic analysis service so a provider can be replaced without changing the analysis rules.
+A public XAUUSD chart and rule-based analysis view, with a private workspace for trade records. The public chart uses indicative reference OHLC data; it can differ from OANDA or FundingPips. Reference-feed mode always shows `NO_TRADE` because broker spread, execution and account risk are not verified. The application never executes trades or modifies broker-side orders.
 
 ## What is implemented
 
-- React + Vite + MUI dashboard, responsive navigation and TradingView Lightweight Charts candlesticks, volume, crosshair OHLC, timeframe selector, structure markers, rule IDs, support/resistance zone bounds and manually registered trade levels.
+- React + Vite + MUI dashboard, responsive navigation and Lightweight Charts candlesticks with reference OHLC bars, crosshair OHLC, timeframe selector, confirmed structure markers, rule IDs, support/resistance bounds, liquidity references and supply/demand zones.
+- Public XAUS chart-API adapter for M5, M15, M30, H1, H4 and D1 OHLC bars. The adapter validates prices and timestamps, excludes forming bars, marks spot volume unavailable, and caches each timeframe for 60 seconds. The feed is an indicative Yahoo Finance proxy, not a broker quote; reference mode does not issue trade entries.
 - Node.js + Express API with password hashing, signed HTTP-only session cookie, per-user settings/trades/journal/alerts, rate limiting, Helmet, CORS origin restriction, audit records and server-side input validation.
 - MongoDB collections and compound indexes for candles, snapshots, settings, users, analysis, zones, patterns, setups, trades, alerts, deliveries, news, backtests, journal and audit records. Candle data is upserted by provider/symbol/timeframe/UTC timestamp. Snapshots retain only the latest tick. TTL retention defaults to 5 years for candles, 3 years for alerts/deliveries and 7 years for audit logs; set a retention day count to `0` to disable that TTL index.
 - Python analysis service: confirmed swing highs/lows (3 left + 3 right closed bars), HH/HL/LH/LL, candle-close BOS/CHoCH, separate provisional wick penetrations, simple trend/range context, true-range volatility expansion/contraction, pivot-cluster support/resistance, candidate supply/demand zones after a defined displacement, previous day/week/month OHLC, equal-pivot and session liquidity references, potential wick-and-close liquidity sweeps, and double-top/bottom candidates. Findings include rule IDs, confirmation times or invalidation text. Fewer than 20 candles returns “Insufficient data.” Session defaults use Singapore, London, and New York IANA time zones with daylight-saving support.
@@ -27,7 +28,7 @@ The collector never accepts a password, never calls `order_send`, and never send
 
 Requirements: Node.js 22+, Python 3.12+, and MongoDB 7+ (local or Docker). In a terminal at the repository root:
 
-1. Copy `.env.example` to `.env` and set a long random `JWT_SECRET`. `DATA_MODE=illustrative` is the development default.
+1. Copy `.env.example` to `.env` and set a long random `JWT_SECRET`. `DATA_MODE=illustrative` is the development default; set `DATA_MODE=xaus` to use the public reference-feed analysis view.
 2. Start MongoDB (for example `docker compose up -d mongo`).
 3. Install the analysis service's IANA timezone database: `py -3 -m pip install -r services/analysis/requirements.txt` on Windows, or `python3 -m pip install -r services/analysis/requirements.txt` elsewhere.
 4. Run `npm install` once.
@@ -62,7 +63,7 @@ MT5 terminal, collector, cloud API, database and analysis service must stay runn
 For the Netlify frontend setup and the access needed to deploy the full stack, see [NETLIFY_DEPLOY.md](NETLIFY_DEPLOY.md).
 
 1. Provision an HTTPS reverse proxy/domain and a private MongoDB service with backups.
-2. Copy `.env.example` to the deployment host's secret store; set `JWT_SECRET`, `COLLECTOR_TOKEN`, `WEB_ORIGIN`, `NODE_ENV=production`, `DATA_MODE=disabled`, `MARKET_SYMBOL`, and optional Telegram/OpenAI settings. Compose uses its private MongoDB container by default; for managed MongoDB, set `COMPOSE_MONGO_URI` to its TLS-enabled URI. `MONGO_URI` is used by local Node development. Never commit a real `.env`.
+2. Copy `.env.example` to the deployment host's secret store; set `JWT_SECRET`, `WEB_ORIGIN`, `NODE_ENV=production`, and `DATA_MODE=xaus` for public reference analysis. Use `DATA_MODE=disabled` to hide market analysis or `DATA_MODE=provider` only after a verified broker collector is connected; provider mode also needs a unique `COLLECTOR_TOKEN`. Compose uses its private MongoDB container by default; for managed MongoDB, set `COMPOSE_MONGO_URI` to its TLS-enabled URI. `MONGO_URI` is used by local Node development. Never commit a real `.env`.
 3. Enable registration for first-time account creation, start Compose with `docker compose up --build -d`, create the account through HTTPS, then disable registration and restart the API.
 4. Complete the VPS `--check` and a collector upload. Then set `DATA_MODE=provider`, restart the API, and confirm `/api/health`, Dashboard connection status, latest update time and chart timestamp before relying on analysis.
 5. Back up MongoDB regularly and test restore into a separate database. Mongo backups should include user/trade/settings data and retained candles; VPS backups should not expose the MT5 terminal's stored credentials.

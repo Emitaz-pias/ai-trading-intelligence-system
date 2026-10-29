@@ -12,7 +12,7 @@ services:
       - key: WEB_ORIGIN
         value: https://piastradinganalysis.netlify.app
       - key: DATA_MODE
-        value: disabled
+        value: xaus
       - key: ALLOW_REGISTRATION
         value: false
       - key: ANALYSIS_URL

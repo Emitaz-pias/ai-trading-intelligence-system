@@ -23,7 +23,7 @@ export default function MarketChart({ candles, analysis, trades, timeframe, symb
   const [showStructure, setShowStructure] = useState(true);
   const [showZones, setShowZones] = useState(true);
   const [showSupplyDemand, setShowSupplyDemand] = useState(true);
-  const [showLiquidity, setShowLiquidity] = useState(false);
+  const [showLiquidity, setShowLiquidity] = useState(true);
   const [showTrades, setShowTrades] = useState(true);
   const [overlayRevision, setOverlayRevision] = useState(0);
   const [selectedZone, setSelectedZone] = useState<SupplyDemandZone | null>(null);
@@ -92,6 +92,7 @@ export default function MarketChart({ candles, analysis, trades, timeframe, symb
     const output: { time: UTCTimestamp; position: 'aboveBar' | 'belowBar' | 'inBar'; color: string; shape: 'circle' | 'arrowUp' | 'arrowDown'; text: string; size: number }[] = [];
     if (showSwings) for (const swing of analysis?.swings || []) output.push({ time: chartTime(swing.confirmedAt), position: swing.kind === 'swing_high' ? 'aboveBar' : 'belowBar', color: swing.kind === 'swing_high' ? '#f5bd63' : '#49d4b3', shape: swing.kind === 'swing_high' ? 'arrowDown' : 'arrowUp', text: swing.label, size: 1 });
     if (showStructure) for (const event of analysis?.structure || []) output.push({ time: chartTime(event.time), position: event.direction === 'up' ? 'belowBar' : 'aboveBar', color: event.direction === 'up' ? '#49d4b3' : '#ff737d', shape: event.direction === 'up' ? 'arrowUp' : 'arrowDown', text: event.type, size: 1 });
+    output.sort((a, b) => a.time - b.time);
     markers.current.setMarkers(output.slice(-80));
     const addLine = (price: number, color: string, title: string, style = LineStyle.Dashed) => lines.current.push(candle.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }));
     if (showZones) {
@@ -111,7 +112,7 @@ export default function MarketChart({ candles, analysis, trades, timeframe, symb
 
   return <Box>
     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={0.8} mb={1.3}>
-      <Stack direction="row" alignItems="center" spacing={1}><Typography fontWeight={750}>{symbol}</Typography><Typography className="mono" color="text.secondary" fontSize={11}>{timeframe}</Typography><Typography variant="caption" color="text.secondary">{sourceMode === 'illustrative' ? 'SYNTHETIC' : sourceMode === 'provider' ? 'BROKER CANDLES' : 'NO FEED'}</Typography></Stack>
+      <Stack direction="row" alignItems="center" spacing={1}><Typography fontWeight={750}>{symbol}</Typography><Typography className="mono" color="text.secondary" fontSize={11}>{timeframe}</Typography><Typography variant="caption" color="text.secondary">{sourceMode === 'illustrative' ? 'SYNTHETIC' : sourceMode === 'provider' ? 'BROKER CANDLES' : sourceMode === 'xaus' ? 'INDICATIVE · XAUS' : 'NO FEED'}</Typography></Stack>
       {crosshair && <Typography className="mono" variant="caption" color="text.secondary">{crosshair.time} · O {crosshair.open.toFixed(2)} H {crosshair.high.toFixed(2)} L {crosshair.low.toFixed(2)} C {crosshair.close.toFixed(2)}</Typography>}
     </Stack>
     <Box sx={{ position: 'relative' }}><Box ref={root} sx={{ width: '100%', minHeight: 440, '& canvas': { display: 'block' } }} />

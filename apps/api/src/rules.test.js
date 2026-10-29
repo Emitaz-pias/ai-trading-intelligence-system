@@ -30,6 +30,13 @@ test('illustrative and stale sources cannot produce an actionable plan', () => {
   assert.equal(makeConditionalPlan({ results: {} }, false, 'provider').state, 'DATA_UNAVAILABLE');
 });
 
+test('fresh indicative XAUS candles may show chart analysis but never issue a trade entry', () => {
+  const current = bar(0, 99, 101, 98, 100);
+  const plan = makeConditionalPlan(planFixture([current]), true, 'xaus', { M15: [current] });
+  assert.equal(plan.state, 'NO_TRADE');
+  assert.match(plan.reasonsToAvoid.join(' '), /broker quote/);
+});
+
 function planFixture(m15Bars, m5Bars = []) {
   return {
     results: { M15: { status: 'ok', regime: 'bullish_trend', currentClose: m15Bars.at(-1).close, atr14: 1, structure: [{ type: 'BOS', direction: 'up', level: 100, time: m15Bars[0].time, confirmed: true }] } },

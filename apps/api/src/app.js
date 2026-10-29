@@ -13,13 +13,15 @@ const {
 const { TIMEFRAMES, isFresh, isUtcTimestamp, validateCandle, tradeTriggers, makeConditionalPlan } = require('./rules');
 const { dateKey, sessionKey, dailyLossLimitBreached, computeRisk } = require('./risk');
 const { illustrativeCandles } = require('./illustrative');
+const { fetchXausCandles } = require('./xaus');
 const { createAlert, sendTelegram } = require('./notifications');
 const { PROVIDER: NEWS_PROVIDER, activeNewsWindow } = require('./news');
 
 const ACCESS_COOKIE = 'ati_session';
 const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'local-development-secret-change-before-deploy-00000000');
-const DATA_MODE = process.env.DATA_MODE === 'provider' ? 'provider' : process.env.NODE_ENV === 'production' ? 'disabled' : 'illustrative';
+const DATA_MODE = ['provider', 'xaus'].includes(process.env.DATA_MODE) ? process.env.DATA_MODE : process.env.NODE_ENV === 'production' ? 'disabled' : 'illustrative';
 const MAX_TICK_AGE_SECONDS = Math.max(5, Number(process.env.MAX_TICK_AGE_SECONDS) || 30);
+const MAX_XAUS_BAR_AGE_SECONDS = Math.max(60, Number(process.env.MAX_XAUS_BAR_AGE_SECONDS) || 300);
 const TIMEFRAME_SECONDS = { M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400 };
 const openAiSchema = {
   type: 'object',
@@ -62,6 +64,7 @@ function parseFinite(value, label, { min = 0, max = Number.MAX_SAFE_INTEGER } = 
 function candlesFor(timeframe, limit) {
   if (DATA_MODE === 'illustrative') return Promise.resolve(illustrativeCandles(timeframe, limit));
   if (DATA_MODE === 'disabled') return Promise.resolve([]);
+  if (DATA_MODE === 'xaus') return fetchXausCandles(timeframe, limit);
   return MarketCandle.find({ provider: 'fundingpips-mt5', symbol: process.env.MARKET_SYMBOL || 'XAUUSD', timeframe })
     .sort({ time: -1 }).limit(limit).lean().then((rows) => rows.reverse().map((row) => ({ time: row.time.toISOString(), open: row.open, high: row.high, low: row.low, close: row.close, volume: row.volume, source: row.provider })));
 }
@@ -77,6 +80,27 @@ async function marketStatus() {
     currentPrice: null, latestTickAt: null, lastSuccessfulUpdateAt: null, isFresh: false,
     warnings: ['Production data mode is disabled until a collector and provider mode are configured.'],
   };
+  if (DATA_MODE === 'xaus') {
+    const candles = await candlesFor('M5', 2);
+    const latest = candles.at(-1);
+    const latestClosedAt = new Date(Date.parse(latest.time) + 5 * 60_000);
+    const ageSeconds = Math.max(0, (Date.now() - latestClosedAt.getTime()) / 1000);
+    const isFresh = ageSeconds <= MAX_XAUS_BAR_AGE_SECONDS;
+    const connectionStatus = isFresh ? 'delayed' : 'disconnected';
+    const connectionLabel = isFresh ? `Indicative XAU/USD · last closed M5 bar ${Math.floor(ageSeconds / 60)}m ago` : 'XAU/USD reference candles are stale';
+    return {
+      mode: 'xaus', connectionStatus, connectionLabel,
+      currentPrice: isFresh ? latest.close : null, latestTickAt: latestClosedAt.toISOString(),
+      lastSuccessfulUpdateAt: latestClosedAt.toISOString(), isFresh,
+      provider: 'xaus-yahoo-proxy', symbol: 'XAUUSD',
+      maxTickAgeSeconds: MAX_XAUS_BAR_AGE_SECONDS,
+      warnings: [
+        'Indicative XAU/USD OHLC from the XAUS public chart API (Yahoo Finance proxy); it may differ from OANDA and FundingPips.',
+        'This is not your broker feed, has no verified spread or account-risk context, and cannot issue a trade entry.',
+        ...(isFresh ? [] : [`The most recent completed M5 bar is older than ${MAX_XAUS_BAR_AGE_SECONDS} seconds; live trade analysis is withheld.`]),
+      ],
+    };
+  }
   if (mongoose.connection.readyState !== 1) return { mode: 'provider', connectionStatus: 'disconnected', connectionLabel: 'Database unavailable', currentPrice: null, latestTickAt: null, lastSuccessfulUpdateAt: null, isFresh: false, warnings: ['Market-data storage is unavailable.'] };
   const [state, snapshot] = await Promise.all([
     CollectorState.findOne({ provider: 'fundingpips-mt5' }).lean(),
@@ -133,7 +157,7 @@ async function buildAnalysis(userId) {
     }
   }
   const record = { symbol: process.env.MARKET_SYMBOL || 'XAUUSD', source: DATA_MODE, asOf: data.report?.asOf ? new Date(data.report.asOf) : undefined, results: data.results, report: data.report };
-  if (mongoose.connection.readyState === 1) await AnalysisResult.create(record);
+  if (DATA_MODE === 'provider' && mongoose.connection.readyState === 1) await AnalysisResult.create(record);
   return { sourceMode: DATA_MODE, marketStatus: status, results: data.results, report: data.report, tradePlan: plan };
 }
 
@@ -186,6 +210,21 @@ function makeApp() {
     let analysis = 'unavailable';
     try { const response = await fetch(`${analysisUrl}/health`, { signal: AbortSignal.timeout(1500) }); if (response.ok) analysis = 'healthy'; } catch {}
     res.json({ status: mongoose.connection.readyState === 1 && analysis === 'healthy' ? 'ok' : 'degraded', database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected', analysis, mode: DATA_MODE });
+  });
+
+  const publicChartRateLimit = rateLimit({ windowMs: 60_000, limit: 12, standardHeaders: 'draft-8', legacyHeaders: false });
+  app.get('/api/public/market/chart', publicChartRateLimit, async (req, res) => {
+    if (DATA_MODE !== 'xaus') return res.status(503).json({ error: 'Public XAU/USD analysis feed is not configured' });
+    const timeframe = String(req.query.timeframe || 'M15').toUpperCase();
+    if (!TIMEFRAMES.has(timeframe)) return res.status(400).json({ error: 'Unsupported timeframe' });
+    try {
+      const analysis = await buildAnalysis();
+      const candles = await candlesFor(timeframe, 600);
+      res.json({ ...analysis, symbol: 'XAUUSD', timeframe, candles, sourceLabel: 'XAUS public chart API · Yahoo Finance proxy' });
+    } catch (error) {
+      console.error('public_xau_chart_analysis_failed', { timeframe, name: error.name || 'Error', detail: String(error.message || '').slice(0, 160) });
+      res.status(error.status === 400 ? 400 : 503).json({ error: error.status === 400 ? error.message : 'XAU/USD chart analysis is temporarily unavailable' });
+    }
   });
 
   app.post('/api/auth/register', async (req, res) => {
