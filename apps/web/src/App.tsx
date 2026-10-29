@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
   Alert, AppBar, Avatar, Box, Button, Card, CardContent, Checkbox, Chip, CircularProgress, Container, Dialog,
@@ -8,8 +8,8 @@ import {
 import { useTheme } from '@mui/material/styles';
 import { ArrowDownwardRounded, ArrowUpwardRounded, EventNoteRounded, HistoryRounded, LogoutRounded, MenuBookRounded, MonitorHeartRounded, NotificationsActiveRounded, QueryStatsRounded, RefreshRounded, ScienceRounded, SettingsRounded, ShieldRounded, ShowChartRounded, SpaceDashboardRounded, TrackChangesRounded, WarningAmberRounded } from './icons';
 import { api, json, patchJson, webSocketUrl } from './api';
-import MarketChart from './components/MarketChart';
-import type { Alert as AlertEvent, AnalysisResponse, Candle, MarketStatus, NewsEvent, RiskStatus, Settings, Trade } from './types';
+import TradingViewChart from './components/TradingViewChart';
+import type { Alert as AlertEvent, AnalysisResponse, MarketStatus, NewsEvent, RiskStatus, Settings, Trade } from './types';
 
 type User = { id: string; email: string };
 type AuthResponse = { user: User };
@@ -150,7 +150,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
       <Container maxWidth={false} sx={{ maxWidth: 1600, px: { xs: 2, sm: 2.5, lg: 3.5 }, py: { xs: 2.5, md: 3.5 } }}>
         <Routes>
           <Route path="/" element={<Dashboard status={status} refreshKey={refreshKey} />} />
-          <Route path="/chart" element={<ChartPage status={status} refreshKey={refreshKey} />} />
+          <Route path="/chart" element={<ChartPage />} />
           <Route path="/analysis" element={<AnalysisPage refreshKey={refreshKey} />} />
           <Route path="/setups" element={<SetupsPage refreshKey={refreshKey} />} />
           <Route path="/trades" element={<TradeMonitor refreshKey={refreshKey} status={status} />} />
@@ -275,49 +275,14 @@ function useAnalysis(refreshKey: number) {
   return { data, loading, error, reload: load };
 }
 
-function ChartPage({ status, refreshKey }: { status: MarketStatus | null; refreshKey: number }) {
+function ChartPage() {
   const [timeframe, setTimeframe] = useState('M15');
-  const [candles, setCandles] = useState<Candle[]>([]);
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const analysis = useAnalysis(refreshKey);
-  useEffect(() => {
-    let alive = true; setLoading(true); setError('');
-    Promise.all([api<{ candles: Candle[] }>(`/market/candles?timeframe=${timeframe}&limit=500`), api<{ trades: Trade[] }>('/trades')])
-      .then(([bars, monitored]) => { if (alive) { setCandles(bars.candles); setTrades(monitored.trades); } })
-      .catch((e) => { if (alive) setError(e instanceof Error ? e.message : 'Chart unavailable'); })
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [timeframe, refreshKey]);
-  const currentAnalysis = analysis.data?.results?.[timeframe];
-  return <Box className="page-enter"><PageTitle title="Live chart" subtitle="Candlesticks, confirmed structure and provider-aware overlays." action={<FormControl size="small" sx={{ minWidth: 112 }}><InputLabel>Timeframe</InputLabel><Select label="Timeframe" value={timeframe} onChange={(event) => setTimeframe(event.target.value)}>{['M5', 'M15', 'M30', 'H1', 'H4', 'D1'].map((tf) => <MenuItem key={tf} value={tf}>{tf}</MenuItem>)}</Select></FormControl>} />
-    <StatusBanner status={status} />{error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-    <Card><CardContent sx={{ p: { xs: 1.5, md: 2.2 } }}>
-      {loading ? <Box minHeight={440} display="grid" sx={{ placeItems: 'center' }}><CircularProgress size={25} /></Box> : <MarketChart candles={candles} analysis={currentAnalysis} trades={trades} timeframe={timeframe} symbol={status?.symbol || 'XAUUSD'} sourceMode={status?.mode || 'illustrative'} />}
-    </CardContent></Card>
-    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} mt={1.5}>
-      <Card sx={{ flex: 1 }}><CardContent><Typography fontWeight={700} fontSize={13}>Chart data</Typography><Typography color="text.secondary" variant="body2" mt={0.6}>{status?.mode === 'illustrative' ? 'Generated synthetic OHLC bars. Time values are fixed test coordinates and are not historical market data.' : status?.isFresh ? 'Candle history is stored from the MT5 terminal; current quote shown only while the tick is fresh.' : 'Historical candles may remain available, but the current price is hidden while the collector is stale.'}</Typography></CardContent></Card>
-      <Card sx={{ flex: 1 }}><CardContent><Typography fontWeight={700} fontSize={13}>Crosshair</Typography><Typography color="text.secondary" variant="body2" mt={0.6}>Move over a candle to inspect its UTC timestamp and OHLC values. The display converts timestamps to Asia/Dhaka.</Typography></CardContent></Card>
-    </Stack>
-    <AnnotationInspector analysis={currentAnalysis} />
+  const intervals: Record<string, string> = { M5: '5', M15: '15', M30: '30', H1: '60', H4: '240', D1: 'D' };
+  return <Box className="page-enter"><PageTitle title="TradingView XAUUSD chart" subtitle="Interactive gold chart for viewing. Send a screenshot here when you want me to analyze the current setup." action={<FormControl size="small" sx={{ minWidth: 112 }}><InputLabel>Timeframe</InputLabel><Select label="Timeframe" value={timeframe} onChange={(event) => setTimeframe(event.target.value)}>{Object.keys(intervals).map((tf) => <MenuItem key={tf} value={tf}>{tf}</MenuItem>)}</Select></FormControl>} />
+    <Alert severity="info" sx={{ mb: 1.5 }}>Chart source: OANDA:XAUUSD on TradingView. Its quote can differ slightly from FundingPips. The chart is displayed here; it does not send candles to the app's automatic analysis.</Alert>
+    <Card><CardContent sx={{ p: { xs: 1, md: 1.5 } }}><TradingViewChart interval={intervals[timeframe]} /></CardContent></Card>
+    <Card sx={{ mt: 1.5 }}><CardContent><Typography fontWeight={700} fontSize={13}>Ask for a chart analysis</Typography><Typography color="text.secondary" variant="body2" mt={0.6}>Send a screenshot with the symbol, timeframe and current candles visible. I can analyze it when you send it; I do not watch the chart continuously in the background. No broker login or account journal is needed for chart analysis.</Typography></CardContent></Card>
   </Box>;
-}
-
-function AnnotationInspector({ analysis }: { analysis?: AnalysisResponse['results'][string] }) {
-  const [selected, setSelected] = useState<{ title: string; body: string; ruleId: string } | null>(null);
-  const annotations = useMemo(() => [
-    ...(analysis?.zones || []).map((zone) => ({ title: `${zone.type.toUpperCase()} zone · ${price(zone.low)}–${price(zone.high)}`, body: `${zone.strength} cluster with ${zone.tests} confirmed swing reaction(s). Created ${formatTime(zone.createdAt)}. Invalidated by rule: ${zone.invalidation}`, ruleId: zone.ruleId })),
-    ...(analysis?.supplyDemand || []).map((zone) => ({ title: `${zone.type.toUpperCase()} candidate · ${price(zone.low)}–${price(zone.high)}`, body: `A base was followed by closed displacement at ${formatTime(zone.displacementAt)}. Status: ${zone.status}; retests: ${zone.tests}. ${zone.invalidation} Candidate zones do not guarantee a reversal.`, ruleId: zone.ruleId })),
-    ...(analysis?.liquidity?.levels || []).map((level) => ({ title: `Liquidity · ${level.type.replaceAll('_', ' ')} ${price(level.price)}`, body: `${level.potentialSweepAt ? `Potential sweep at ${formatTime(level.potentialSweepAt)}. ` : ''}Reference from ${formatTime(level.from)} through ${formatTime(level.to)}. A liquidity level is a reference, not an order.`, ruleId: level.ruleId })),
-    ...(analysis?.structure || []).map((event) => ({ title: `${event.type} · ${event.direction}`, body: `Candle close confirmed a break of ${price(event.level)} at ${formatTime(event.time)}. Reference swing: ${formatTime(event.referenceSwingTime)}. A confirmed break may still fail or reverse.`, ruleId: event.ruleId })),
-    ...(analysis?.provisionalWickPenetrations || []).map((event) => ({ title: `Wick penetration · ${event.direction}`, body: `Price wicked through ${price(event.level)} at ${formatTime(event.time)}, but the candle did not close beyond it. This is provisional and is not BOS/CHoCH.`, ruleId: event.ruleId })),
-    ...(analysis?.patterns || []).map((pattern) => ({ title: pattern.type.replaceAll('_', ' '), body: `Candidate identified at ${price(pattern.level)} on ${formatTime(pattern.time)}. ${pattern.invalidation}`, ruleId: pattern.ruleId })),
-  ], [analysis]);
-  return <><Card sx={{ mt: 1.5 }}><CardContent><Stack direction="row" justifyContent="space-between" mb={1.2}><Box><Typography fontWeight={700} fontSize={14}>Inspectable annotations</Typography><Typography variant="caption" color="text.secondary">Select an item for its rule and invalidation condition.</Typography></Box><Chip size="small" label={`${annotations.length} findings`} /></Stack>
-    {annotations.length ? <Stack direction="row" flexWrap="wrap" useFlexGap gap={1}>{annotations.slice(0, 18).map((item, index) => <Chip key={`${item.ruleId}-${index}`} clickable variant="outlined" onClick={() => setSelected(item)} label={item.title} />)}</Stack> : <Typography variant="body2" color="text.secondary">No confirmed annotations meet the configured rules.</Typography>}
-  </CardContent></Card>
-  <Dialog open={Boolean(selected)} onClose={() => setSelected(null)} maxWidth="sm" fullWidth><DialogTitle>{selected?.title}</DialogTitle><DialogContent><Typography variant="body2" color="text.secondary" mb={2}>{selected?.body}</Typography><Chip label={`Rule ID · ${selected?.ruleId}`} size="small" variant="outlined" /></DialogContent><DialogActions><Button onClick={() => setSelected(null)}>Close</Button></DialogActions></Dialog></>;
 }
 
 function AnalysisPage({ refreshKey }: { refreshKey: number }) {
