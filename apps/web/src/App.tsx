@@ -51,7 +51,7 @@ function AppGate() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState('');
-  const [registering, setRegistering] = useState(false);
+  const [showSignIn, setShowSignIn] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -60,30 +60,47 @@ function AppGate() {
   const authenticate = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setAuthError('');
     try {
-      const value = await api<AuthResponse>(registering ? '/auth/register' : '/auth/login', json({ email, password }));
+      const value = await api<AuthResponse>('/auth/login', json({ email, password }));
       setUser(value.user);
     } catch (error) { setAuthError(error instanceof Error ? error.message : 'Could not sign in'); }
     finally { setBusy(false); }
   };
   if (loading) return <Box minHeight="100vh" display="grid" sx={{ placeItems: 'center' }}><CircularProgress size={24} /></Box>;
+  if (!user && !showSignIn) return <GuestChartPage onSignIn={() => setShowSignIn(true)} />;
   if (!user) return <Box minHeight="100vh" className="grid-glow" display="grid" sx={{ placeItems: 'center', px: 2 }}>
     <Card sx={{ width: '100%', maxWidth: 430 }}><CardContent sx={{ p: { xs: 3, sm: 4 } }}>
       <Stack spacing={3}>
         <Stack direction="row" alignItems="center" spacing={1.5}><Avatar sx={{ bgcolor: 'primary.main', color: '#071411', width: 42, height: 42 }}>AI</Avatar><Box><Typography fontWeight={700}>Trading Intelligence</Typography><Typography variant="caption" color="text.secondary">XAUUSD · alert-only workspace</Typography></Box></Stack>
-        <Box><Typography variant="h5" fontWeight={700}>{registering ? 'Create your account' : 'Welcome back'}</Typography><Typography color="text.secondary" variant="body2" mt={0.6}>Private trade records are isolated to your account.</Typography></Box>
+        <Box><Typography variant="h5" fontWeight={700}>Welcome back</Typography><Typography color="text.secondary" variant="body2" mt={0.6}>Sign in to your existing account. Live XAUUSD chart access does not require an account.</Typography></Box>
         {authError && <Alert severity="error">{authError}</Alert>}
         <Box component="form" onSubmit={authenticate}>
           <Stack spacing={2}><TextField label="Email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required fullWidth />
-            <TextField label="Password" type="password" autoComplete={registering ? 'new-password' : 'current-password'} value={password} onChange={(event) => setPassword(event.target.value)} inputProps={{ minLength: registering ? 12 : undefined, maxLength: 128 }} required fullWidth />
-            {registering && <Typography variant="caption" color="text.secondary">Use at least 12 characters. Production registration can be disabled by the server operator.</Typography>}
-            <Button type="submit" variant="contained" size="large" disabled={busy}>{busy ? 'Please wait…' : registering ? 'Create account' : 'Sign in'}</Button>
+            <TextField label="Password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} inputProps={{ maxLength: 128 }} required fullWidth />
+            <Button type="submit" variant="contained" size="large" disabled={busy}>{busy ? 'Please wait…' : 'Sign in'}</Button>
           </Stack>
         </Box>
-        <Button variant="text" onClick={() => { setRegistering(!registering); setAuthError(''); }}>{registering ? 'Already registered? Sign in' : 'New here? Create an account'}</Button>
+        <Button variant="text" onClick={() => { setShowSignIn(false); setAuthError(''); }}>Back to live chart</Button>
       </Stack>
     </CardContent></Card>
   </Box>;
   return <Workspace user={user} onLogout={() => setUser(null)} />;
+}
+
+function GuestChartPage({ onSignIn }: { onSignIn: () => void }) {
+  const [timeframe, setTimeframe] = useState('M15');
+  const intervals: Record<string, string> = { M5: '5', M15: '15', M30: '30', H1: '60', H4: '240', D1: 'D' };
+  return <Box minHeight="100vh" className="grid-glow" sx={{ py: { xs: 2, md: 3 } }}>
+    <Container maxWidth={false} sx={{ maxWidth: 1600, px: { xs: 2, sm: 2.5, lg: 3.5 } }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
+        <Stack direction="row" alignItems="center" spacing={1.5}><Avatar sx={{ bgcolor: 'primary.main', color: '#071411', width: 40, height: 40 }}>AI</Avatar><Box><Typography fontWeight={700}>Trading Intelligence</Typography><Typography variant="caption" color="text.secondary">XAUUSD · live chart</Typography></Box></Stack>
+        <Button variant="outlined" onClick={onSignIn}>Sign in</Button>
+      </Stack>
+      <PageTitle title="Live XAUUSD chart" subtitle="Interactive gold chart. Choose a timeframe and view the live market." action={<FormControl size="small" sx={{ minWidth: 112 }}><InputLabel>Timeframe</InputLabel><Select label="Timeframe" value={timeframe} onChange={(event) => setTimeframe(event.target.value)}>{Object.keys(intervals).map((tf) => <MenuItem key={tf} value={tf}>{tf}</MenuItem>)}</Select></FormControl>} />
+      <Alert severity="info" sx={{ mb: 1.5 }}>Chart source: OANDA:XAUUSD on TradingView. Its quote can differ slightly from FundingPips. This chart is for viewing and does not send candles to automatic analysis.</Alert>
+      <Card><CardContent sx={{ p: { xs: 1, md: 1.5 } }}><TradingViewChart interval={intervals[timeframe]} /></CardContent></Card>
+      <Typography color="text.secondary" variant="body2" mt={1.5}>For chart analysis, send a screenshot with the symbol, timeframe and current candles visible. No broker login or account journal is needed.</Typography>
+    </Container>
+  </Box>;
 }
 
 function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
