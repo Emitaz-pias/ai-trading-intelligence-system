@@ -10,10 +10,10 @@ const {
   User, UserSettings, MarketCandle, MarketSnapshot, CollectorState, AnalysisResult, NewsEvent, NewsProviderState,
   MonitoredTrade, AlertEvent, NotificationDelivery, AuditLog, BacktestRun, BacktestTrade,
 } = require('./models');
-const { TIMEFRAMES, isFresh, isUtcTimestamp, validateCandle, tradeTriggers, makeConditionalPlan } = require('./rules');
+const { TIMEFRAMES, isFresh, isUtcTimestamp, validateCandle, tradeTriggers, makeConditionalPlan, makeReferenceScenarios } = require('./rules');
 const { dateKey, sessionKey, dailyLossLimitBreached, computeRisk } = require('./risk');
 const { illustrativeCandles } = require('./illustrative');
-const { fetchXausCandles } = require('./xaus');
+const { fetchXausCandles, fetchXausSpot } = require('./xaus');
 const { createAlert, sendTelegram } = require('./notifications');
 const { PROVIDER: NEWS_PROVIDER, activeNewsWindow } = require('./news');
 
@@ -220,7 +220,15 @@ function makeApp() {
     try {
       const analysis = await buildAnalysis();
       const candles = await candlesFor(timeframe, 600);
-      res.json({ ...analysis, symbol: 'XAUUSD', timeframe, candles, sourceLabel: 'XAUS public chart API · Yahoo Finance proxy' });
+      const scenarioCandles = { M15: await candlesFor('M15', 600), M5: await candlesFor('M5', 600) };
+      const scenarios = makeReferenceScenarios(analysis.results, scenarioCandles, analysis.marketStatus.isFresh);
+      let referenceQuote;
+      try { referenceQuote = await fetchXausSpot(); }
+      catch (error) {
+        console.error('public_xau_spot_quote_failed', { name: error.name || 'Error', detail: String(error.message || '').slice(0, 160) });
+        referenceQuote = { price: null, status: 'unavailable', source: 'XAUS spot API', asOf: null, ageSeconds: null, checkedAt: new Date().toISOString() };
+      }
+      res.json({ ...analysis, symbol: 'XAUUSD', timeframe, candles, scenarios, referenceQuote, sourceLabel: 'XAUS chart candles · Yahoo Finance proxy; indicative spot line · XAUS/gold-api.com' });
     } catch (error) {
       console.error('public_xau_chart_analysis_failed', { timeframe, name: error.name || 'Error', detail: String(error.message || '').slice(0, 160) });
       res.status(error.status === 400 ? 400 : 503).json({ error: error.status === 400 ? error.message : 'XAU/USD chart analysis is temporarily unavailable' });

@@ -12,7 +12,7 @@ function displayTime(value: Time): string {
   return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dhaka', dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
-export default function MarketChart({ candles, analysis, trades, timeframe, symbol, sourceMode }: { candles: Candle[]; analysis?: AnalysisResult; trades: Trade[]; timeframe: string; symbol: string; sourceMode: string }) {
+export default function MarketChart({ candles, analysis, trades, timeframe, symbol, sourceMode, referencePrice }: { candles: Candle[]; analysis?: AnalysisResult; trades: Trade[]; timeframe: string; symbol: string; sourceMode: string; referencePrice?: number | null }) {
   const root = useRef<HTMLDivElement | null>(null);
   const chart = useRef<IChartApi | null>(null);
   const candleSeries = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -95,6 +95,7 @@ export default function MarketChart({ candles, analysis, trades, timeframe, symb
     output.sort((a, b) => a.time - b.time);
     markers.current.setMarkers(output.slice(-80));
     const addLine = (price: number, color: string, title: string, style = LineStyle.Dashed) => lines.current.push(candle.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }));
+    if (Number.isFinite(referencePrice) && (referencePrice as number) > 0) addLine(referencePrice as number, 'rgba(105,178,255,.92)', 'Indicative spot · separate source', LineStyle.Solid);
     if (showZones) {
       if (analysis?.nearestSupport) { addLine(analysis.nearestSupport.low, 'rgba(73,212,179,.60)', 'Support low'); addLine(analysis.nearestSupport.high, 'rgba(73,212,179,.60)', 'Support high'); }
       if (analysis?.nearestResistance) { addLine(analysis.nearestResistance.low, 'rgba(255,115,125,.60)', 'Resistance low'); addLine(analysis.nearestResistance.high, 'rgba(255,115,125,.60)', 'Resistance high'); }
@@ -108,7 +109,7 @@ export default function MarketChart({ candles, analysis, trades, timeframe, symb
       addLine(trade.currentStopLoss, '#ff737d', 'Manual SL', LineStyle.LargeDashed);
       for (const target of trade.targets || []) addLine(target.price, '#49d4b3', target.label, LineStyle.LargeDashed);
     }
-  }, [analysis, trades, showSwings, showStructure, showZones, showLiquidity, showTrades]);
+  }, [analysis, trades, showSwings, showStructure, showZones, showLiquidity, showTrades, referencePrice]);
 
   return <Box>
     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={0.8} mb={1.3}>

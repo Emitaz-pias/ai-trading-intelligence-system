@@ -1,4 +1,6 @@
 export type Candle = { time: string; open: number; high: number; low: number; close: number; volume: number; source?: string };
+export type ReferenceQuote = { price: number | null; status: 'fresh' | 'stale' | 'unavailable'; source: string; asOf: string | null; ageSeconds: number | null; checkedAt: string };
+export type ReferenceScenario = { side: 'buy' | 'sell'; level: number | null; state: string; grade: 'A+' | 'A' | 'B' | 'C'; latestM15Close: number | null; trigger: string; confirmation: string; invalidation: string; gradeReason: string };
 export type MarketStatus = {
   mode: 'illustrative' | 'provider' | 'xaus' | 'disabled'; connectionStatus: 'connected' | 'delayed' | 'disconnected' | 'illustrative';
   connectionLabel: string; currentPrice: number | null; latestTickAt: string | null; lastSuccessfulUpdateAt: string | null;

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { isFresh, validateCandle, isUtcTimestamp, tradeTriggers, makeConditionalPlan } = require('./rules');
+const { isFresh, validateCandle, isUtcTimestamp, tradeTriggers, makeConditionalPlan, makeReferenceScenarios } = require('./rules');
 const { sessionKey, dailyLossLimitBreached } = require('./risk');
 
 test('freshness rejects missing and stale timestamps', () => {
@@ -73,6 +73,31 @@ test('a close beyond the retest invalidation boundary invalidates the plan', () 
   const failure = bar(15, 100, 100.1, 98.5, 98.8);
   const result = planFixture([breakout, failure]);
   assert.equal(makeConditionalPlan(result, true, 'provider', { M15: [breakout, failure] }).state, 'SETUP_INVALIDATED');
+});
+
+test('reference scenarios wait for a completed M15 close and grade only rule evidence', () => {
+  const before = bar(0, 99, 100, 98.5, 99);
+  const breakout = bar(15, 99.5, 101.5, 99.4, 101);
+  const results = { M15: { status: 'ok', currentClose: 101, atr14: 1, structure: [{ type: 'BOS', direction: 'up', level: 100, time: breakout.time, confirmed: true }] } };
+  const scenarios = makeReferenceScenarios(results, { M15: [before, breakout], M5: [] }, true);
+  assert.equal(scenarios.find((item) => item.side === 'buy').state, 'WAIT_RETEST');
+  assert.equal(scenarios.find((item) => item.side === 'buy').grade, 'B');
+  assert.equal(scenarios.find((item) => item.side === 'sell').grade, 'C');
+  assert.match(scenarios.find((item) => item.side === 'buy').confirmation, /completed M5/);
+});
+
+test('reference scenario reaches A only after M15 retest, M5 close and aligned higher timeframes', () => {
+  const before = bar(0, 99, 100, 98.5, 99);
+  const breakout = bar(15, 99.5, 101.5, 99.4, 101);
+  const retest = bar(30, 100.2, 101, 100, 100.5);
+  const m5Confirm = bar(35, 100.5, 101.3, 100.4, 101.2);
+  const results = {
+    M15: { status: 'ok', currentClose: 100.5, atr14: 4, structure: [{ type: 'BOS', direction: 'up', level: 100, time: breakout.time, confirmed: true }] },
+    H1: { regime: 'bullish_trend' }, H4: { regime: 'bullish_trend' },
+  };
+  const buy = makeReferenceScenarios(results, { M15: [before, breakout, retest], M5: [m5Confirm] }, true).find((item) => item.side === 'buy');
+  assert.equal(buy.state, 'CHART_CONFIRMATION_SEEN');
+  assert.equal(buy.grade, 'A');
 });
 
 test('session keys follow IANA daylight-saving windows and distinguish overlap', () => {

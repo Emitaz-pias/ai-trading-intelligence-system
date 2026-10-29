@@ -125,4 +125,88 @@ function makeConditionalPlan(result, healthy, sourceMode, candles = {}) {
   };
 }
 
-module.exports = { TIMEFRAMES, isFresh, isUtcTimestamp, validateCandle, candleGapCandidates, tradeTriggers, makeConditionalPlan };
+function makeReferenceScenarios(results = {}, candles = {}, feedFresh = true) {
+  const m15 = results.M15;
+  const m15Bars = candles.M15 || [];
+  const lastClose = m15Bars.at(-1)?.close ?? m15?.currentClose;
+  const atr = Number(m15?.atr14) > 0 ? Number(m15.atr14) : 0;
+  const retestWidth = Math.max(atr * 0.25, 0.01);
+
+  function referenceLevel(side) {
+    const expectedDirection = side === 'buy' ? 'up' : 'down';
+    const recentBreak = [...(m15?.structure || [])].reverse().find((event) => {
+      if (!event.confirmed || !['BOS', 'CHOCH'].includes(event.type) || event.direction !== expectedDirection) return false;
+      const eventIndex = m15Bars.findIndex((bar) => Math.abs(Date.parse(bar.time) - Date.parse(event.time)) <= 15 * 60_000);
+      return eventIndex >= Math.max(0, m15Bars.length - 9);
+    });
+    if (Number.isFinite(recentBreak?.level)) return recentBreak.level;
+    const zone = side === 'buy' ? m15?.nearestResistance : m15?.nearestSupport;
+    const fromZone = side === 'buy' ? zone?.high : zone?.low;
+    if (Number.isFinite(fromZone) && Number.isFinite(lastClose) && (side === 'buy' ? fromZone > lastClose : fromZone < lastClose)) return fromZone;
+    const swingKind = side === 'buy' ? 'swing_high' : 'swing_low';
+    const candidates = (m15?.swings || []).filter((swing) => swing.kind === swingKind && Number.isFinite(swing.price) && Number.isFinite(lastClose) && (side === 'buy' ? swing.price > lastClose : swing.price < lastClose));
+    candidates.sort((a, b) => side === 'buy' ? a.price - b.price : b.price - a.price);
+    return candidates[0]?.price ?? null;
+  }
+
+  function scenario(side) {
+    const bullish = side === 'buy';
+    const level = referenceLevel(side);
+    const directionLabel = bullish ? 'above' : 'below';
+    const closeText = bullish ? 'close above' : 'close below';
+    const noLevel = level === null;
+    const stateBase = {
+      side, level, state: noLevel ? 'NO_LEVEL' : 'WAIT_M15_CLOSE', grade: 'C',
+      latestM15Close: Number.isFinite(lastClose) ? lastClose : null,
+      trigger: noLevel ? 'No confirmed reference level is available.' : `Wait for a completed M15 candle to ${closeText} ${level.toFixed(2)}. A wick through the level does not count.`,
+      confirmation: 'After a close-confirmed break, wait for price to retest and hold the level, then wait for a completed M5 candle to close back in the breakout direction.',
+      invalidation: noLevel ? 'No level is available to define invalidation.' : `After a breakout, an M15 close ${bullish ? 'below' : 'above'} ${Math.max(0, level + (bullish ? -retestWidth : retestWidth)).toFixed(2)} invalidates this breakout idea.`,
+      gradeReason: 'C · the M15 close condition has not been confirmed.',
+    };
+    if (noLevel || !m15 || m15.status !== 'ok') return stateBase;
+    if (!feedFresh) return { ...stateBase, state: 'DATA_STALE', gradeReason: 'C · reference candles are stale; reassess after fresh data arrives.' };
+
+    const crossingIndexes = m15Bars.map((bar, index) => index > 0 && (bullish
+      ? m15Bars[index - 1].close <= level && bar.close > level
+      : m15Bars[index - 1].close >= level && bar.close < level) ? index : -1).filter((index) => index >= 0);
+    const crossingIndex = crossingIndexes.at(-1) ?? -1;
+    const threshold = level + (bullish ? -retestWidth : retestWidth);
+    if (crossingIndex < 0) {
+      const alreadyBeyond = Number.isFinite(lastClose) && (bullish ? lastClose > level : lastClose < level);
+      return alreadyBeyond
+        ? { ...stateBase, state: 'WAIT_FRESH_CLOSE', trigger: `Price is already ${directionLabel} ${level.toFixed(2)}, but no recent crossing close is available. Wait for a fresh M15 close ${bullish ? 'back below and then above' : 'back above and then below'} the level before reassessing.` }
+        : stateBase;
+    }
+    const barsAfterBreak = m15Bars.slice(crossingIndex + 1);
+    if (barsAfterBreak.length > 8) return { ...stateBase, state: 'WAIT_FRESH_CLOSE', trigger: `The M15 close beyond ${level.toFixed(2)} is older than the eight-bar review window. Wait for a fresh M15 close ${directionLabel} the level.` };
+    if (barsAfterBreak.some((bar) => bullish ? bar.close < threshold : bar.close > threshold)) {
+      return { ...stateBase, state: 'INVALIDATED', trigger: `A completed M15 candle closed back through the retest boundary ${threshold.toFixed(2)}; the breakout idea is invalidated.` };
+    }
+
+    const retestIndex = barsAfterBreak.findIndex((bar) => bullish
+      ? bar.low >= threshold && bar.low <= level + retestWidth && bar.close > level && bar.close > bar.open
+      : bar.high <= threshold && bar.high >= level - retestWidth && bar.close < level && bar.close < bar.open);
+    if (retestIndex < 0) {
+      return { ...stateBase, state: 'WAIT_RETEST', grade: 'B', trigger: `A completed M15 candle closed ${directionLabel} ${level.toFixed(2)}. Wait for a retest to hold; do not treat the breakout close alone as confirmation.`, gradeReason: 'B · M15 close-confirmed break; retest is still pending.' };
+    }
+
+    const retestBar = barsAfterBreak[retestIndex];
+    const m5 = (candles.M5 || []).at(-1);
+    const m5Confirmed = Boolean(m5 && Date.parse(m5.time) > Date.parse(retestBar.time) && (bullish ? m5.close > retestBar.high : m5.close < retestBar.low));
+    const higherTimeframesAligned = bullish
+      ? results.H1?.regime === 'bullish_trend' && results.H4?.regime === 'bullish_trend'
+      : results.H1?.regime === 'bearish_trend' && results.H4?.regime === 'bearish_trend';
+    if (!m5Confirmed) {
+      return { ...stateBase, state: 'WAIT_M5_CLOSE', grade: 'B', trigger: `M15 retest/rejection at ${level.toFixed(2)} is confirmed. Wait for a completed M5 close ${bullish ? 'above' : 'below'} the rejection candle extreme.`, gradeReason: 'B · M15 break and retest; M5 confirmation is still pending.' };
+    }
+    return {
+      ...stateBase, state: 'CHART_CONFIRMATION_SEEN', grade: higherTimeframesAligned ? 'A' : 'B',
+      trigger: `M15 close, retest and M5 close confirmation are present${higherTimeframesAligned ? ' with H1/H4 direction aligned' : ', but H1/H4 direction is not fully aligned'}.`,
+      gradeReason: higherTimeframesAligned ? 'A · chart structure, retest, M5 close and H1/H4 direction agree.' : 'B · M5 confirmation is present, but H1/H4 direction is mixed or not aligned.',
+    };
+  }
+
+  return [scenario('buy'), scenario('sell')];
+}
+
+module.exports = { TIMEFRAMES, isFresh, isUtcTimestamp, validateCandle, candleGapCandidates, tradeTriggers, makeConditionalPlan, makeReferenceScenarios };

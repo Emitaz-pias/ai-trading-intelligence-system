@@ -9,6 +9,7 @@ const TIMEFRAME_CONFIG = {
 
 const CACHE_TTL_MS = 60_000;
 const cache = new Map();
+let spotCache;
 
 function normalizeXausPayload(payload, timeframe, nowMs = Date.now()) {
   const config = TIMEFRAME_CONFIG[timeframe];
@@ -54,6 +55,33 @@ async function fetchXausCandles(timeframe, limit = 600, { nowMs = Date.now(), fe
   return candles.slice(-limit);
 }
 
-function clearXausCache() { cache.clear(); }
+async function fetchXausSpot({ nowMs = Date.now(), fetchImpl = fetch } = {}) {
+  if (spotCache && spotCache.expiresAt > nowMs) return spotCache.quote;
+  const response = await fetchImpl('https://xaus.com/api/v1/spot?compact=1', {
+    signal: AbortSignal.timeout(12_000), headers: { accept: 'application/json' },
+  });
+  if (!response.ok) throw Object.assign(new Error(`XAU/USD spot provider returned HTTP ${response.status}`), { status: 503 });
+  const payload = await response.json();
+  const rawPrice = Number(payload?.spot_usd_oz);
+  const asOf = payload?.price_as_of || payload?.updated_at || payload?.data_state?.as_of;
+  const timestamp = Date.parse(asOf);
+  const reportedAge = Number(payload?.data_state?.age_seconds);
+  const ageSeconds = Number.isFinite(reportedAge) && reportedAge >= 0
+    ? reportedAge
+    : Number.isFinite(timestamp) ? Math.max(0, (nowMs - timestamp) / 1000) : Infinity;
+  const fresh = payload?.data_state?.status === 'fresh' && payload?.stale !== true && Number.isFinite(rawPrice) && rawPrice > 0 && Number.isFinite(timestamp) && ageSeconds <= 120;
+  const quote = {
+    price: fresh ? rawPrice : null,
+    status: fresh ? 'fresh' : 'stale',
+    source: String(payload?.price_source || payload?.source || 'XAUS spot API').slice(0, 80),
+    asOf: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null,
+    ageSeconds: Number.isFinite(ageSeconds) ? Math.floor(ageSeconds) : null,
+    checkedAt: new Date(nowMs).toISOString(),
+  };
+  spotCache = { expiresAt: nowMs + CACHE_TTL_MS, quote };
+  return quote;
+}
 
-module.exports = { TIMEFRAME_CONFIG, normalizeXausPayload, fetchXausCandles, clearXausCache };
+function clearXausCache() { cache.clear(); spotCache = undefined; }
+
+module.exports = { TIMEFRAME_CONFIG, normalizeXausPayload, fetchXausCandles, fetchXausSpot, clearXausCache };

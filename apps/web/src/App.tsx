@@ -9,7 +9,7 @@ import { useTheme } from '@mui/material/styles';
 import { ArrowDownwardRounded, ArrowUpwardRounded, EventNoteRounded, HistoryRounded, LogoutRounded, MenuBookRounded, MonitorHeartRounded, NotificationsActiveRounded, QueryStatsRounded, RefreshRounded, ScienceRounded, SettingsRounded, ShieldRounded, ShowChartRounded, SpaceDashboardRounded, TrackChangesRounded, WarningAmberRounded } from './icons';
 import { api, json, patchJson, webSocketUrl } from './api';
 import MarketChart from './components/MarketChart';
-import type { Alert as AlertEvent, AnalysisResponse, Candle, MarketStatus, NewsEvent, RiskStatus, Settings, Trade } from './types';
+import type { Alert as AlertEvent, AnalysisResponse, Candle, MarketStatus, NewsEvent, ReferenceQuote, ReferenceScenario, RiskStatus, Settings, Trade } from './types';
 
 type User = { id: string; email: string };
 type AuthResponse = { user: User };
@@ -88,7 +88,7 @@ function AppGate() {
 
 function GuestChartPage({ onSignIn }: { onSignIn: () => void }) { return <LiveChartPage onSignIn={onSignIn} />; }
 
-type PublicChartResponse = AnalysisResponse & { symbol: string; timeframe: string; candles: Candle[]; sourceLabel: string };
+type PublicChartResponse = AnalysisResponse & { symbol: string; timeframe: string; candles: Candle[]; scenarios: ReferenceScenario[]; referenceQuote: ReferenceQuote; sourceLabel: string };
 
 function LiveChartPage({ onSignIn }: { onSignIn?: () => void }) {
   const [timeframe, setTimeframe] = useState('M15');
@@ -101,7 +101,7 @@ function LiveChartPage({ onSignIn }: { onSignIn?: () => void }) {
     catch (issue) { setError(issue instanceof Error ? issue.message : 'Market analysis is unavailable'); }
     finally { setLoading(false); }
   }, [timeframe]);
-  useEffect(() => { setLoading(true); setData(null); load(); const timer = window.setInterval(load, 60_000); return () => window.clearInterval(timer); }, [load]);
+  useEffect(() => { setLoading(true); setData(null); load(); const timer = window.setInterval(load, 65_000); return () => window.clearInterval(timer); }, [load]);
 
   const result = data?.results?.[timeframe];
   const context = data?.results?.M15;
@@ -117,7 +117,14 @@ function LiveChartPage({ onSignIn }: { onSignIn?: () => void }) {
       {status && <Alert severity={status.isFresh ? 'warning' : 'error'} sx={{ mb: 1.5 }}><b>{status.connectionLabel}.</b> {status.warnings.join(' ')}</Alert>}
       {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
       {loading && !data ? <Stack alignItems="center" py={8}><CircularProgress size={25} /><Typography color="text.secondary" variant="caption" mt={1}>Loading XAU/USD reference candles and analysis…</Typography></Stack> : data && <>
-        <Card><CardContent sx={{ p: { xs: 1, md: 1.5 } }}><MarketChart candles={data.candles} analysis={result} trades={[]} timeframe={timeframe} symbol={data.symbol} sourceMode={data.sourceMode} /><Typography variant="caption" color="text.secondary" display="block" mt={0.5}>Last completed {timeframe} bar: {formatTime(data.candles.at(-1)?.time)} · values and overlays use closed bars.</Typography></CardContent></Card>
+        <Card><CardContent sx={{ p: { xs: 1, md: 1.5 } }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={0.4} mb={1}>
+            <Stack direction="row" alignItems="center" spacing={1}><Typography variant="caption" color="text.secondary">Indicative spot</Typography><Typography className="mono" fontSize={18} fontWeight={750}>{data.referenceQuote?.status === 'fresh' && Number.isFinite(data.referenceQuote.price) ? `$${price(data.referenceQuote.price)}` : 'Unavailable'}</Typography><Chip size="small" color={data.referenceQuote?.status === 'fresh' ? 'success' : 'default'} label={data.referenceQuote?.status || 'unavailable'} /></Stack>
+            <Typography variant="caption" color="text.secondary">{data.referenceQuote?.source || 'XAUS spot'} · price time {formatTime(data.referenceQuote?.asOf)} · checked {formatTime(data.referenceQuote?.checkedAt)}{Number.isFinite(data.referenceQuote?.ageSeconds) ? ` · ${data.referenceQuote.ageSeconds}s old` : ''}</Typography>
+          </Stack>
+          <MarketChart candles={data.candles} analysis={result} trades={[]} timeframe={timeframe} symbol={data.symbol} sourceMode={data.sourceMode} referencePrice={data.referenceQuote?.status === 'fresh' ? data.referenceQuote.price : null} />
+          <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>Last completed {timeframe} bar: {formatTime(data.candles.at(-1)?.time)} · candle OHLC and analysis use completed bars; the blue spot line refreshes about once per minute.</Typography>
+        </CardContent></Card>
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 1.4, mt: 1.4 }}>
           <Card><CardContent>
             <Typography fontWeight={700}>Current structure · M15</Typography>
@@ -139,6 +146,26 @@ function LiveChartPage({ onSignIn }: { onSignIn?: () => void }) {
             {plan?.reasonsToAvoid?.map((reason) => <Typography key={reason} color="text.secondary" variant="caption" display="block" mt={0.7}>• {reason}</Typography>)}
           </CardContent></Card>
         </Box>
+        <Card sx={{ mt: 1.4 }}><CardContent>
+          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={0.6}>
+            <Typography fontWeight={700}>Conditional M15 scenarios</Typography>
+            <Chip size="small" color="warning" label="NO TRADE · reference feed" />
+          </Stack>
+          <Typography color="text.secondary" variant="caption" display="block" mt={0.45}>A level break needs a completed M15 close. A wick alone does not count; after the close, wait for a retest to hold and a completed M5 close in the same direction.</Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1, mt: 1.1 }}>
+            {(data.scenarios || []).map((scenario) => <Paper key={scenario.side} variant="outlined" sx={{ p: 1.2, bgcolor: 'rgba(255,255,255,.018)' }}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}>
+                <Typography fontWeight={700} color={scenario.side === 'buy' ? 'success.main' : 'error.main'}>{scenario.side.toUpperCase()} condition</Typography>
+                <Stack direction="row" spacing={0.6}><Chip size="small" variant="outlined" label={scenario.grade} /><Chip size="small" variant="outlined" label={scenario.state.replaceAll('_', ' ')} /></Stack>
+              </Stack>
+              <Typography variant="body2" mt={0.8}>{scenario.trigger}</Typography>
+              <Typography variant="body2" color="text.secondary" mt={0.7}>{scenario.confirmation}</Typography>
+              <Typography variant="caption" color="text.secondary" display="block" mt={0.7}>Invalidation: {scenario.invalidation}</Typography>
+              <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>Grade {scenario.grade}: {scenario.gradeReason}</Typography>
+            </Paper>)}
+          </Box>
+          <Typography variant="caption" color="text.secondary" display="block" mt={1}>Grade means rule-based chart evidence, not win probability. C: waiting for M15 close · B: close break/retest evidence, M5 confirmation pending or higher-timeframe conflict · A: M15 retest and M5 close with H1/H4 aligned · A+: also requires broker-verified price, spread, news and account-risk checks. Those checks are unavailable here, so this chart can show NO TRADE even when chart structure looks strong.</Typography>
+        </CardContent></Card>
         <Typography color="text.secondary" variant="caption" display="block" mt={1.2}>Source: {data.sourceLabel}. The reference feed can differ from OANDA/FundingPips; spot gold has no consolidated exchange volume. Updated from the cloud API about once per minute. No orders are placed.</Typography>
       </>}
     </Container>
